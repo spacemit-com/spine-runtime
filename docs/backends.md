@@ -14,12 +14,14 @@ spert::BackendHandle k3 = spert::backend("spacemit-k3");
 spert::BackendHandle generic = spert::backend("generic/qemu");
 ```
 
-| Backend Name | Target Platform / Purpose | Default Compute-Core Topology | Per-Core Shared Buffer | Selection Method |
-|---|---|---|---:|---|
-| `spacemit-k1` | SpacemiT K1 AI compute cores | CC Core `{0, 1, 2, 3}` | 128 KiB | Selected automatically on K1 hardware, or explicitly by name. |
-| `spacemit-k3` | SpacemiT K3 A100 AI compute cores | CC Core `{8, 9, 10, 11, 12, 13, 14, 15}` | 384 KiB | Selected automatically on K3 hardware, or explicitly through `spacemit-k3` / `spacemit`. |
-| `spacemit-k3-x100` | Compatible execution mode on the K3 X100 core set | Core `{4, 5, 6, 7}` | 384 KiB equivalent fallback | Selected explicitly by name, or used as a generic simulation target. |
-| `generic/qemu` | Functional development and validation on standard Linux, qemu-user, or systems without hardware | Logical Core `0..N-1`, determined by the simulation target | Follows the simulation target | Selected automatically when no hardware is detected, or explicitly through `generic` / `generic/qemu`. |
+| Backend Name | Target Platform / Purpose | Default Compute-Core Topology | Per-Core Shared Buffer | Device Memory and Async Copy | Selection Method |
+|---|---|---|---:|---|---|
+| `spacemit-k1` | SpacemiT K1 AI compute cores | CC Core `{0, 1, 2, 3}` | 128 KiB | Not available | Selected automatically on K1 hardware, or explicitly by name. |
+| `spacemit-k3` | SpacemiT K3 A100 AI compute cores | CC Core `{8, 9, 10, 11, 12, 13, 14, 15}` | 384 KiB | Available | Selected automatically on K3 hardware, or explicitly through `spacemit-k3` / `spacemit`. |
+| `spacemit-k3-x100` | Compatible execution mode on the K3 X100 core set | Core `{4, 5, 6, 7}` | 384 KiB equivalent fallback | Available | Selected explicitly by name, or used as a generic simulation target. |
+| `generic/qemu` | Functional development and validation on standard Linux, qemu-user, or systems without hardware | Logical Core `0..N-1`, determined by the simulation target | Follows the simulation target | Not available | Selected automatically when no hardware is detected, or explicitly through `generic` / `generic/qemu`. |
+
+Device memory and async copy mean the DMA engine (AIDMA) is present: the backend can hand out memory the engine reads and writes, and can move data between such memory and a core's shared buffer without the core copying it. This is a backend capability, so it is decided at run time rather than by the build. Call `spert::Alloc(size, spert::kMemMMZ)` and check for a null result instead of testing the board name — see [Device Memory and Async Copy](api-reference.md#device-memory-and-async-copy).
 
 When no physical SpacemiT platform is detected, generic/qemu simulates the core count and hardware information of `spacemit-k3` by default. Before starting the process, set `SPERT_BACKEND` to select `spacemit-k1`, `spacemit-k3`, or `spacemit-k3-x100` as the simulation target. Physical-platform detection takes precedence over this environment variable.
 

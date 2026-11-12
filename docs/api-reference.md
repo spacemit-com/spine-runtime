@@ -55,6 +55,39 @@ English | [简体中文](api-reference_ZH.md)
 | `shared_buffer()` | Obtains a view of the current compute core's complete shared buffer. |
 | `alloc_shared(bytes, alignment)` | Cooperatively allocates a shared-buffer slice. |
 | `free_shared(view)` | Releases a shared-buffer slice allocated by the current tile. |
+| `copy_async(dst, src, size)` | Starts an asynchronous copy and returns a `CopyFuture`. |
+
+### Device Memory and Async Copy
+
+Device memory is memory the DMA engine can read and write. Allocating it and copying through it both depend on the active backend, so they exist on every platform but only produce results where the engine does: K3 and K3-X100. On a board without it, `kMemMMZ` returns null and `copy_async` returns an invalid handle; nothing throws and `kMemDefault` keeps working.
+
+```cpp
+// kMemDefault is the ordinary host heap and works everywhere.
+// kMemMMZ is the engine-reachable kind and needs AIDMA.
+void * ddr = spert::Alloc(bytes, spert::kMemMMZ);
+if (ddr == nullptr) {
+    return;  // No device memory on this backend.
+}
+// ... fill ddr from the host ...
+```
+
+`Alloc` / `Free` are namespace-level functions rather than `Context` members, because a device buffer usually outlives the tile that fills it.
+
+| API | Function |
+|---|---|
+| `Alloc(size, mem_type)` | Allocates `size` bytes; `mem_type` is `kMemDefault` (default) or `kMemMMZ`. Returns null on failure. |
+| `Free(ptr)` | Releases a block returned by `Alloc`. Null pointers are ignored. |
+| `Context::copy_async(dst, src, size)` | Queues a copy and returns a `CopyFuture` immediately. |
+| `CopyFuture::valid()` | Reports whether the copy was accepted. |
+| `CopyFuture::sync()` | Waits for completion and returns a `Status`. Callable once. |
+
+Both ends of a copy must be memory the engine can reach: a block from `Alloc(size, kMemMMZ)`, or a buffer from `alloc_shared()` in the calling tile. Any combination works, so DDR→shared, shared→DDR, and DDR→DDR are all valid. Host heap memory is not reachable. The pointers are not validated — only null pointers and zero length are rejected — so passing an unreachable address is a caller error with undefined results.
+
+A `CopyFuture` holds only a request token and is move-only. The transfer itself is a process-wide resource, not something owned by a tile or Stream, so a tile may start a copy and return; the request completes regardless. Because `alloc_shared()` slices belong to the tile, that tile must not free a slice before the copy using it has been synced.
+
+The engine accepts a bounded number of in-flight requests. When that table is full, `copy_async` returns an invalid handle instead of blocking, so a kernel that issues copies in a loop should sync earlier ones rather than assuming every request is queued.
+
+A single 2D strided transfer is not supported. To move strided data, either issue one copy per row or repack it into a contiguous block on the host first.
 
 ### Status Codes
 
@@ -86,6 +119,8 @@ Use `spert::to_string(status)` to obtain the stable English name of a status.
 | `spine_grid` | Queries the current tile's coordinate in the specified dimension. |
 | `spine_thread_tcm_malloc` / `spine_thread_tcm_free` | Allocates and releases a tile's per-core shared-memory slice. |
 | `spine_alloc_with_id` / `spine_free_with_id` | Overridable ID-based memory-allocation hooks. |
+| `spine_malloc_mmz` / `spine_free_mmz` | Allocates and releases engine-reachable device memory. |
+| `spine_copy_async` / `spine_copy_wait` | Starts an asynchronous copy and consumes its completion token. |
 
 In addition, `spert_abi.h` provides the header-inline helper function `spine_thread_cpu_relax()`, which issues an architecture-specific CPU-relax hint. This function is not a linkable ABI symbol exported by the shared library.
 
