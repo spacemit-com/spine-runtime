@@ -21,6 +21,7 @@ SpineRuntime 提供 Tile-SPMD（Single Program, Multiple Data）编程模型：�
 - **异步任务与组合等待**：`launch` 返回 `Future`，支持单任务等待、超时等待和多个任务的合并等待。
 - **tile 内协作**：提供全网格同步、Barrier、Event、子任务 `spawn/join` 和协作式 `yield`。
 - **每核共享缓冲区**：kernel 可访问当前计算核的共享暂存区，也可按需申请和释放 tile 私有片段。
+- **设备内存与异步拷贝**：在带 DMA 引擎的平台上，kernel 可申请引擎可达的内存，并在它与共享缓冲区之间非阻塞地搬运数据，从而让传输与计算重叠。
 - **多 Backend 共存**：支持自动选择默认 Backend，也支持通过名称获取独立的 `BackendHandle`。
 - **稳定集成边界**：模板参数在应用侧完成类型封装，预编译运行时通过非模板接口接收任务；二进制兼容范围以匹配的 SDK 头文件和 `libspert` SONAME 主版本为边界。
 
@@ -71,6 +72,8 @@ SpineRuntime quickstart passed on 8 core(s)
 ```
 
 输出的核数是实际授予给 Stream 的核数；当其他 Stream 或进程正在占用 K3 计算核时，该数值可能不同。使用预编译 SDK 交叉编译的流程见 [`examples/quickstart/README_ZH.md`](examples/quickstart/README_ZH.md)。
+
+另一个示例 [`examples/aidma-overlap`](examples/aidma-overlap) 演示双缓冲设备内存拷贝与计算重叠。它需要带 DMA 引擎的硬件，在没有该引擎的 Backend 上会正常退出。
 
 ## 文档
 

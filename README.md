@@ -32,6 +32,7 @@ Key features include:
 - **Asynchronous tasks and combined waits**: `launch` returns a `Future`, supporting waits for a single task, timed waits, and combined waits for multiple tasks.
 - **In-tile cooperation**: Provides whole-grid synchronization, Barriers, Events, child-task `spawn/join`, and cooperative `yield`.
 - **Per-core shared buffers**: A kernel can access the current compute core's shared scratchpad or allocate and release tile-private slices on demand.
+- **Device memory and async copy**: On platforms with a DMA engine, a kernel can allocate engine-reachable memory and copy between it and its shared buffer without blocking, which allows a transfer to overlap with compute.
 - **Multiple coexisting Backends**: Supports automatic selection of the default Backend and access to independent `BackendHandle` instances by name.
 - **Stable integration boundary**: Template arguments are wrapped into types on the application side, while the prebuilt runtime receives tasks through non-template interfaces. Binary compatibility is bounded by matching SDK headers and the `libspert` SONAME major version.
 
@@ -95,6 +96,10 @@ The reported core count is the number actually granted to the Stream and
 can vary when other Streams or processes are using K3 compute cores. For
 cross-compilation with a prebuilt SDK, see
 [`examples/quickstart/README.md`](examples/quickstart/README.md).
+
+A second example, [`examples/aidma-overlap`](examples/aidma-overlap), shows
+double-buffered device memory copies overlapping with compute. It requires
+hardware with a DMA engine and exits cleanly on backends without one.
 
 ## Documentation
 

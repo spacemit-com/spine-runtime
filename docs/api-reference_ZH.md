@@ -55,6 +55,39 @@
 | `shared_buffer()` | 获取当前计算核的完整共享缓冲区视图。 |
 | `alloc_shared(bytes, alignment)` | 协作式申请共享缓冲区片段。 |
 | `free_shared(view)` | 释放当前 tile 申请的共享缓冲区片段。 |
+| `copy_async(dst, src, size)` | 发起一次异步拷贝并返回 `CopyFuture`。 |
+
+### 设备内存与异步拷贝
+
+设备内存是 DMA 引擎可以直接读写的内存。申请它、通过它拷贝都依赖当前 Backend，因此这两个接口在所有平台都存在，但只有板上有该引擎时才产生结果：K3 和 K3-X100。在没有该引擎的板子上，`kMemMMZ` 返回空指针、`copy_async` 返回无效句柄，不抛异常，`kMemDefault` 仍照常可用。
+
+```cpp
+// kMemDefault 是普通宿主堆，所有平台可用。
+// kMemMMZ 是引擎可达的那一类，需要 AIDMA。
+void * ddr = spert::Alloc(bytes, spert::kMemMMZ);
+if (ddr == nullptr) {
+    return;  // 该 Backend 没有设备内存。
+}
+// ... 从宿主侧填充 ddr ...
+```
+
+`Alloc` / `Free` 是命名空间级函数而不是 `Context` 成员，因为设备缓冲区通常比填充它的 tile 存活更久。
+
+| API | 功能 |
+|---|---|
+| `Alloc(size, mem_type)` | 申请 `size` 字节；`mem_type` 取 `kMemDefault`（默认）或 `kMemMMZ`。失败返回空指针。 |
+| `Free(ptr)` | 释放 `Alloc` 返回的指针；空指针被忽略。 |
+| `Context::copy_async(dst, src, size)` | 排队一次拷贝并立刻返回 `CopyFuture`。 |
+| `CopyFuture::valid()` | 报告该拷贝是否被接受。 |
+| `CopyFuture::sync()` | 等待完成并返回 `Status`，只能调用一次。 |
+
+拷贝两端都必须是引擎可达的内存：`Alloc(size, kMemMMZ)` 的块，或当前 tile 通过 `alloc_shared()` 取得的缓冲区。两者可任意组合，因此 DDR→共享区、共享区→DDR、DDR→DDR 都合法；宿主堆内存不可达。指针**不做校验**——只拒绝空指针和零长度——所以传入不可达地址属于调用方错误，结果未定义。
+
+`CopyFuture` 只持有一个请求 token，且为 move-only。真正的传输是进程级资源，不属于某个 tile 或 Stream，因此 tile 可以发起拷贝后直接返回，请求照常完成。由于 `alloc_shared()` 的切片归 tile 所有，该 tile 不能在使用它的拷贝同步完成前释放它。
+
+引擎可受理的在途请求数量有限。表满时 `copy_async` 返回无效句柄而不是阻塞，因此循环中持续发起拷贝的 kernel 应当及时同步早先的请求，不能假定每个请求都已排队成功。
+
+不支持单次 2D 跨行（strided）传输。要搬运带跨行的数据，可以按行逐次发起拷贝，或先在宿主侧整理成连续块再搬。
 
 ### 状态码
 
@@ -86,6 +119,8 @@
 | `spine_grid` | 查询当前 tile 在指定维度上的坐标。 |
 | `spine_thread_tcm_malloc` / `spine_thread_tcm_free` | 申请和释放 tile 的每核共享内存片段。 |
 | `spine_alloc_with_id` / `spine_free_with_id` | 可覆盖的带 ID 内存分配钩子。 |
+| `spine_malloc_mmz` / `spine_free_mmz` | 申请与释放引擎可达的设备内存。 |
+| `spine_copy_async` / `spine_copy_wait` | 发起异步拷贝并消费其完成 token。 |
 
 此外，`spert_abi.h` 提供头文件内联辅助函数 `spine_thread_cpu_relax()`，用于发出架构相关的 CPU relax 提示；该函数不是动态库导出的可链接 ABI 符号。
 
